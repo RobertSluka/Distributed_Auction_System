@@ -1,4 +1,4 @@
-module Chittychat
+module Auction
 
 go 1.23.1
 

@@ -1,13 +1,30 @@
 syntax = "proto3";
 
-option go_package = "grpc/";
+option go_package = "/auction";
 
-message Message {
-    string message = 1;
+service Auction {
+  // placing a bid
+  rpc Bid(BidRequest) returns (BidResponse);
+
+  // querying the auction result
+  rpc Result(ResultRequest) returns (ResultResponse);
 }
 
-message Empty {}
+message BidRequest {
+  int32 amount = 1;
+}
 
-service Bully {
-    rpc Chat(stream Message) returns (stream Message) {}
+message BidResponse {
+  enum Outcome {
+    SUCCESS = 0;
+    FAIL = 1;
+    EXCEPTION = 2;
+  }
+  Outcome outcome = 1; 
+}
+
+message ResultRequest {}
+
+message ResultResponse {
+  string outcome = 1;  
 }

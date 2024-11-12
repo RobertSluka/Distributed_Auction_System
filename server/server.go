@@ -1,72 +1,43 @@
 package main
 
 import (
-	proto "Chittychat/grpc"
+	"Auction/auction"
+	proto "Auction/auction"
+	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
-	"sync"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-type Bully struct {
-	proto.UnimplementedBullyServer
-	nodeId int
-	nodes  map[int]proto.Bully_ChatServer
-	mu     sync.Mutex
+type auctionServer struct {
+	proto.UnimplementedAuctionServer
+	highestBid int32
+	winner     string
 }
 
-func (s *Bully) broadcast(message string) {
-	for _, client := range s.nodes {
-		if err := client.Send(&proto.Message{Message: message}); err != nil {
-			log.Printf("Failed to send message to node: %v", err)
-		}
+func (s *auctionServer) Bid(c context.Context, req *auction.BidRequest) (*auction.BidResponse, error) {
+	amount := req.GetAmount()
+
+	if amount > s.highestBid {
+		s.highestBid = amount
+		s.winner = "current_client" // needs to be modified with an actual identifier
+
+		return &auction.BidResponse{Outcome: auction.BidResponse_SUCCESS}, nil
 	}
+	return &auction.BidResponse{Outcome: auction.BidResponse_FAIL}, nil
 }
 
-// When a new node connects to the server, the Chat method is invoked.
-func (s *Bully) Chat(stream proto.Bully_ChatServer) error {
-	s.mu.Lock()
-	newNodeId := s.nodeId
-	s.nodeId++
-	//s.nodes[newNodeId] = stream stores the stream in the s.nodes map with newNodeId as the key.
-	s.nodes[newNodeId] = stream
-	s.mu.Unlock()
-
-	joinMessage := fmt.Sprintf("%d joined", newNodeId)
-	log.Println(joinMessage)
-	s.broadcast(joinMessage)
-
-	//This deferred function will execute when the Chat method returns.
-	defer func() {
-		s.mu.Lock()
-		delete(s.nodes, newNodeId)
-		s.mu.Unlock()
-
-		leaveMessage := fmt.Sprintf("%d left", newNodeId)
-		log.Println(leaveMessage)
-		s.broadcast(leaveMessage)
-	}()
-
-	//The server continuously receives messages from the stream.
-	for {
-		in, err := stream.Recv()
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-
-		if !strings.Contains(in.Message, "timeout") {
-			log.Println(fmt.Sprintf("Node %d: %s", newNodeId, in.Message))
-		}
-		s.broadcast(in.Message)
+func (s *auctionServer) Result(c context.Context, req *auction.ResultRequest) (*auction.ResultResponse, error) {
+	if s.highestBid == 0 {
+		return nil, status.Error(codes.NotFound, "No bids have been placed.")
 	}
 
+	outcome := fmt.Sprintf("Highest bid: %d by %s", s.highestBid, s.winner)
+	return &auction.ResultResponse{Outcome: outcome}, nil
 }
 
 // The main function starts the server and listens on port 8080.
@@ -75,12 +46,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	log.Println("Server listening on port 8080")
+	log.Println("Auction server listening on port 8080")
 
 	s := grpc.NewServer()
-	proto.RegisterBullyServer(s, &Bully{
-		nodes: make(map[int]proto.Bully_ChatServer),
-	})
+
+	proto.RegisterAuctionServer(s, &auctionServer{})
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
