@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option go_package = "grpc/";
+
+message Message {
+    string message = 1;
+}
+
+message Empty {}
+
+service Bully {
+    rpc Chat(stream Message) returns (stream Message) {}
+}
