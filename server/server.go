@@ -7,52 +7,111 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"strconv"
+	"strings"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
+
+var ltime int32 = 0
 
 type auctionServer struct {
 	proto.UnimplementedAuctionServer
-	highestBid int32
-	winner     string
+}
+
+func readHighestBid() (int64, string) {
+	data, err := os.ReadFile("highest_bid.txt")
+	ar := strings.Split(string(data), " ")
+
+	highbid, winner := ar[0], ar[1]
+
+	if err != nil {
+		log.Fatal("Something wrong with file")
+	}
+
+	highestBid, err := strconv.ParseInt(highbid, 10, 32)
+	if err != nil {
+		log.Fatal("Something wrong with int")
+	}
+
+	return highestBid, winner
 }
 
 func (s *auctionServer) Bid(c context.Context, req *auction.BidRequest) (*auction.BidResponse, error) {
 	amount := req.GetAmount()
+	bidClientName := req.GetBidderName()
+	highestBid, _ := readHighestBid()
+	bidTime := req.GetTime()
 
-	if amount > s.highestBid {
-		s.highestBid = amount
-		s.winner = "current_client" // needs to be modified with an actual identifier
-
-		return &auction.BidResponse{Outcome: auction.BidResponse_SUCCESS}, nil
+	if bidTime > ltime {
+		ltime = bidTime
 	}
-	return &auction.BidResponse{Outcome: auction.BidResponse_FAIL}, nil
+
+	ltime++
+
+	if amount > highestBid {
+		winningBid := strconv.Itoa(int(amount)) + " " + bidClientName
+		amount_byte := []byte(winningBid)
+		os.WriteFile("highest_bid.txt", amount_byte, 0644)
+		highestBid = amount
+		log.Printf("New highest bid is %d by %s", amount, bidClientName)
+		return &auction.BidResponse{Outcome: auction.BidResponse_SUCCESS, Time: ltime}, nil
+	}
+	log.Printf("Bid of %d by %s failed", amount, bidClientName)
+	return &auction.BidResponse{Outcome: auction.BidResponse_FAIL, Time: ltime}, nil
 }
 
 func (s *auctionServer) Result(c context.Context, req *auction.ResultRequest) (*auction.ResultResponse, error) {
-	if s.highestBid == 0 {
-		return nil, status.Error(codes.NotFound, "No bids have been placed.")
+	highbid, winner := readHighestBid()
+
+	if highbid == 0 {
+		outcome := fmt.Sprintf("No bids have been placed")
+		return &auction.ResultResponse{Outcome: outcome}, nil
+
 	}
 
-	outcome := fmt.Sprintf("Highest bid: %d by %s", s.highestBid, s.winner)
+	outcome := fmt.Sprintf("Highest bid: %d by %s", highbid, winner)
 	return &auction.ResultResponse{Outcome: outcome}, nil
 }
 
-// The main function starts the server and listens on port 8080.
 func main() {
+	reset := []byte("0 None")
+	os.WriteFile("highest_bid.txt", reset, 0644)
+	timeout := 10
+
 	lis, err := net.Listen("tcp", ":8080")
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		lis, err = net.Listen("tcp", ":8081")
+		log.Printf("Auction server listening on port 8081")
+		if err != nil {
+			log.Fatalf("there was an error: %s", err)
+		}
+	} else {
+		log.Printf("Auction server listening on port 8080")
 	}
-	log.Println("Auction server listening on port 8080")
 
 	s := grpc.NewServer()
 
 	proto.RegisterAuctionServer(s, &auctionServer{})
 
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
+		}
+	}()
+
+	for {
+		if ltime >= int32(timeout) {
+			log.Println("Auction finished after 10 timeunits")
+			bid, winner := readHighestBid()
+			fmt.Printf("Highest bid: %d by %s\n", bid, winner)
+
+			s.GracefulStop()
+			log.Println("Server shut down gracefully")
+			break
+		}
+
 	}
+
 }

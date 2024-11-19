@@ -11,7 +11,9 @@ service Auction {
 }
 
 message BidRequest {
-  int32 amount = 1;
+  int64 amount = 1;
+  string bidderName = 2;
+  int32 time = 3;
 }
 
 message BidResponse {
@@ -20,7 +22,8 @@ message BidResponse {
     FAIL = 1;
     EXCEPTION = 2;
   }
-  Outcome outcome = 1; 
+  Outcome outcome = 1;
+  int32 time = 2; 
 }
 
 message ResultRequest {}
