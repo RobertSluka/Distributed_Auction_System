@@ -15,6 +15,7 @@ import (
 )
 
 var ltime int32 = 0
+var timeout int32 = 10
 
 type auctionServer struct {
 	proto.UnimplementedAuctionServer
@@ -39,6 +40,10 @@ func readHighestBid() (int64, string) {
 }
 
 func (s *auctionServer) Bid(c context.Context, req *auction.BidRequest) (*auction.BidResponse, error) {
+	if ltime >= timeout {
+		return s.auctionEnded()
+	}
+	
 	amount := req.GetAmount()
 	bidClientName := req.GetBidderName()
 	highestBid, _ := readHighestBid()
@@ -63,6 +68,10 @@ func (s *auctionServer) Bid(c context.Context, req *auction.BidRequest) (*auctio
 }
 
 func (s *auctionServer) Result(c context.Context, req *auction.ResultRequest) (*auction.ResultResponse, error) {
+	if ltime >= timeout {
+		return s.auctionEnded()
+	}
+
 	highbid, winner := readHighestBid()
 
 	if highbid == 0 {
@@ -75,10 +84,17 @@ func (s *auctionServer) Result(c context.Context, req *auction.ResultRequest) (*
 	return &auction.ResultResponse{Outcome: outcome}, nil
 }
 
+func (s *auctionServer) auctionEnded() (*auction.ResultResponse, error) {
+	highbid, winner := readHighestBid()
+
+	outcome := fmt.Sprintf("Auction ended! Highest bid: %d by %s", highbid, winner)
+	return &auction.ResultResponse{Outcome: outcome}, nil
+}
+
 func main() {
 	reset := []byte("0 None")
 	os.WriteFile("highest_bid.txt", reset, 0644)
-	timeout := 10
+	
 
 	lis, err := net.Listen("tcp", ":8080")
 	if err != nil {
@@ -95,23 +111,23 @@ func main() {
 
 	proto.RegisterAuctionServer(s, &auctionServer{})
 
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
-		}
-	}()
-
-	for {
-		if ltime >= int32(timeout) {
-			log.Println("Auction finished after 10 timeunits")
-			bid, winner := readHighestBid()
-			fmt.Printf("Highest bid: %d by %s\n", bid, winner)
-
-			s.GracefulStop()
-			log.Println("Server shut down gracefully")
-			break
-		}
-
+	// go func() {
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
 	}
+	// }()
+
+	// for {
+	// 	if ltime >= int32(timeout) {
+	// 		log.Println("Auction finished after 10 timeunits")
+	// 		bid, winner := readHighestBid()
+	// 		fmt.Printf("Highest bid: %d by %s\n", bid, winner)
+
+	// 		s.GracefulStop()
+	// 		log.Println("Server shut down gracefully")
+	// 		break
+	// 	}
+
+	// }
 
 }
