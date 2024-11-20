@@ -41,9 +41,9 @@ func readHighestBid() (int64, string) {
 
 func (s *auctionServer) Bid(c context.Context, req *auction.BidRequest) (*auction.BidResponse, error) {
 	if ltime >= timeout {
-		return s.auctionEnded()
+		return s.auctionEndedBid()
 	}
-	
+
 	amount := req.GetAmount()
 	bidClientName := req.GetBidderName()
 	highestBid, _ := readHighestBid()
@@ -69,7 +69,7 @@ func (s *auctionServer) Bid(c context.Context, req *auction.BidRequest) (*auctio
 
 func (s *auctionServer) Result(c context.Context, req *auction.ResultRequest) (*auction.ResultResponse, error) {
 	if ltime >= timeout {
-		return s.auctionEnded()
+		return s.auctionEndedResult()
 	}
 
 	highbid, winner := readHighestBid()
@@ -84,7 +84,14 @@ func (s *auctionServer) Result(c context.Context, req *auction.ResultRequest) (*
 	return &auction.ResultResponse{Outcome: outcome}, nil
 }
 
-func (s *auctionServer) auctionEnded() (*auction.ResultResponse, error) {
+func (s *auctionServer) auctionEndedBid() (*auction.BidResponse,error) {
+	highbid, winner := readHighestBid()
+
+	outcome := fmt.Sprintf("Auction ended! Highest bid: %d by %s", highbid, winner)
+	return &auction.BidResponse{Outcome: outcome}, nil
+}
+
+func (s *auctionServer) auctionEndedResult() (*auction.ResultResponse,error) {
 	highbid, winner := readHighestBid()
 
 	outcome := fmt.Sprintf("Auction ended! Highest bid: %d by %s", highbid, winner)
@@ -94,7 +101,7 @@ func (s *auctionServer) auctionEnded() (*auction.ResultResponse, error) {
 func main() {
 	reset := []byte("0 None")
 	os.WriteFile("highest_bid.txt", reset, 0644)
-	
+
 
 	lis, err := net.Listen("tcp", ":8080")
 	if err != nil {
