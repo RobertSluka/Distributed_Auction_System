@@ -28,7 +28,7 @@ func main() {
 	}
 	defer conn1.Close()
 
-	client1 := proto.NewAuctionClient(conn1)
+	replica := proto.NewAuctionClient(conn1)
 
 	conn2, err := grpc.NewClient("0.0.0.0:8081", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -36,17 +36,17 @@ func main() {
 	}
 	defer conn2.Close()
 
-	client2 := proto.NewAuctionClient(conn2)
+	replica2 := proto.NewAuctionClient(conn2)
 
 	for {
 		var input string
 		fmt.Scan(&input)
 
 		if strings.Contains(input, "res") {
-			getAuctionResult(client1, client2)
+			getAuctionResult(replica, replica2)
 		} else {
 			amount, err := strconv.Atoi(input)
-			testBid(clientName, client1, client2, int64(amount))
+			testBid(clientName, replica, replica2, int64(amount))
 			if err != nil {
 				log.Panic("oh no")
 			}
@@ -64,7 +64,7 @@ func testBid(clientName string, client1 auction.AuctionClient, client2 auction.A
 	ltime++
 	res, err := client1.Bid(c, &auction.BidRequest{Amount: amount, BidderName: clientName, Time: ltime})
 	if err != nil {
-		log.Printf("Failed to bid, switching to client2")
+		log.Printf("Failed to bid, switching to replica")
 		res, err = client2.Bid(c, &auction.BidRequest{Amount: amount, BidderName: clientName, Time: ltime})
 		if err != nil {
 			log.Fatalf("Error when bidding: %v", err)
@@ -89,7 +89,7 @@ func getAuctionResult(client1 auction.AuctionClient, client2 auction.AuctionClie
 
 	res, err := client1.Result(c, &auction.ResultRequest{})
 	if err != nil {
-		log.Printf("Error, connecting to client2")
+		log.Printf("Error, connecting to replica")
 		res, err = client2.Result(c, &auction.ResultRequest{})
 		if err != nil {
 			log.Fatalf("Error when fetching result: %v", err)
