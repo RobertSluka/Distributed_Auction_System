@@ -75,12 +75,19 @@ func testBid(clientName string, client1 auction.AuctionClient, client2 auction.A
 	if res.GetOutcome() == auction.BidResponse_FAIL {
 		outcome = "FAIL"
 	}
+	if res.GetOutcome() == auction.BidResponse_EXCEPTION {
+		outcome = "EXCEPTION"
+	}
 
 	if res.GetTime() > ltime {
 		ltime = res.GetTime()
 	}
 
 	fmt.Printf("Bid of %d: %s\n", amount, outcome)
+
+	if res.GetOutcome() == auction.BidResponse_EXCEPTION {
+		getAuctionResult(client1, client2)
+	}
 }
 
 func getAuctionResult(client1 auction.AuctionClient, client2 auction.AuctionClient) {
